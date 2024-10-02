@@ -1,0 +1,6 @@
+- create a dummy test set with 50 questions (like policy: user phrase, a set of possible answers, the correct answer)
+- check out the prompt tuning/testing frameworks and select one or two for tests
+
+
+- prepare the czech-bench prompts and results to show.
+- show the testing data in a table format
