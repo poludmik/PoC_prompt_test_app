@@ -42,7 +42,7 @@ class SarcasmTestModule:
                 system_message = "You are a helpful assistant."
                 user_message = prompt.format(user_question=test["User"], fact=test["Main information to provide"])
 
-                response = LLMCalls.call_openai_chat_completion(self.model_name, system_message, user_message)
+                response = LLMCalls.call_openai_chat_completion(self.model_name, user_message, system_message)
                 print(f"\033[92mResponse: \033[0m{response}")
                 all_responses.append(response)
                 
@@ -51,7 +51,7 @@ class SarcasmTestModule:
 
                 # Evaluate the response
                 evaluation_prompt = evaluate_sarcasm_prompt.format(user_question=test["User"], LLM_response=response, fact=test["Main information to provide"])
-                evaluation_response = LLMCalls.call_openai_chat_completion("gpt-4o", system_message, evaluation_prompt)
+                evaluation_response = LLMCalls.call_openai_chat_completion("gpt-4o", evaluation_prompt, system_message)
                 backticks = evaluation_response.split("```")
                 json_object = backticks[1].strip()
                 evaluation = json.loads(json_object)

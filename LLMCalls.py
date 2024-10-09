@@ -26,7 +26,7 @@ import json
 class LLMCalls:
 
     @staticmethod
-    def call_openai_chat_completion(model, system_message, user_message):
+    def call_openai_chat_completion(model, user_message, system_message="You are a helpful assistant"):
         client = OpenAI()
         completion = client.chat.completions.create(
             model=model,
