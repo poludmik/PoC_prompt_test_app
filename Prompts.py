@@ -9,8 +9,10 @@ sample_eval_prompt = """**User's Question:** "{user_question}"
 **Evaluation Criteria:**
 1. **Factuality (int, 0 to 10):** Does the assistant's response contain the correct factual information and how easily is it understandable?
 2. **Sarcasm Level (int, 0 to 10):** On a scale from 0 to 10, rate the level of sarcasm in the assistant's response.
-3. **Humor (string):** Is the sarcastic response witty, offensive, or humorous?
-"""
+3. **Politeness (true or false)**: polite or not
+4. **Humor (string):** Is the sarcastic response witty, offensive, or humorous?
+5. **Extraversion(from 0 to 100):** how much the respondant's response was extraverted.
+6. **Friendliness (string): very friendly, friendly, neutral, not friendly."""
 
 end_of_eval_prompt = """
 **Your Task:**

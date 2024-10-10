@@ -27,29 +27,39 @@ import pandas as pd
 
 
 # load a jsonl file and change the "User" field to "user_question" and "Main information to provide" to "fact"
-import json
+# import json
 
-def rename_fields(jsonl_file_path, new_jsonl_file_path):
-    data = []
+# def rename_fields(jsonl_file_path, new_jsonl_file_path):
+#     data = []
     
-    # Read the .jsonl file
-    with open(jsonl_file_path, 'r', encoding='utf-8') as f:
-        for line in f:
-            json_data = json.loads(line)
-            new_json_data = {"user_question": json_data["User"], "fact": json_data["Main information to provide"]}
-            data.append(new_json_data)  # Parse each JSON object and add to the list
+#     # Read the .jsonl file
+#     with open(jsonl_file_path, 'r', encoding='utf-8') as f:
+#         for line in f:
+#             json_data = json.loads(line)
+#             new_json_data = {"user_question": json_data["User"], "fact": json_data["Main information to provide"]}
+#             data.append(new_json_data)  # Parse each JSON object and add to the list
     
-    # Save as a new JSONL file
-    with open(new_jsonl_file_path, 'w', encoding='utf-8') as f:
-        for item in data:
-            f.write(json.dumps(item) + '\n')
+#     # Save as a new JSONL file
+#     with open(new_jsonl_file_path, 'w', encoding='utf-8') as f:
+#         for item in data:
+#             f.write(json.dumps(item) + '\n')
 
-    print(f"Conversion complete! File saved as {new_jsonl_file_path}")
+#     print(f"Conversion complete! File saved as {new_jsonl_file_path}")
 
 
-# File paths
-jsonl_file = 'datasets/dummy_qa_dataset.jsonl'  # Path to your input JSONL file
-new_jsonl_file = 'datasets/dummy_qa_dataset_new.jsonl'    # Path to your output JSONL file
+# # File paths
+# jsonl_file = 'datasets/dummy_qa_dataset.jsonl'  # Path to your input JSONL file
+# new_jsonl_file = 'datasets/dummy_qa_dataset_new.jsonl'    # Path to your output JSONL file
 
-# Run the conversion
-rename_fields(jsonl_file, new_jsonl_file)
+# # Run the conversion
+# rename_fields(jsonl_file, new_jsonl_file)
+
+## Open the xlsx and rename the columns
+# Load the Excel file
+df = pd.read_excel('datasets/dummy_qa_dataset.xlsx')
+
+# Rename the columns
+df.columns = ['user_question', 'fact']
+
+# Save the updated DataFrame to a new Excel file
+df.to_excel('datasets/dummy_qa_dataset_new.xlsx', index=False)

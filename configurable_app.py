@@ -1,26 +1,44 @@
 import streamlit as st
+from streamlit_extras.stylable_container import stylable_container
 import os
 import json
 import random
 from Prompts import *
 from LLMCalls import LLMCalls
 import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
 import datetime
 
+
 class ConfigurableTestModule:
-    def __init__(self, test_set_path, prompt_to_test, judge_prompt, model_name):
+    def __init__(self, test_set_path, prompt_to_test, judge_prompt, tested_model_name, judge_model_name):
         self.test_set_path = test_set_path
-        self.model_name = model_name
+        if not os.path.exists(test_set_path):
+            raise FileNotFoundError(f"Test set file not found at: {test_set_path}")
+
+        self.tested_model_name = tested_model_name
+        self.judge_model_name = judge_model_name
         self.prompt_to_test = prompt_to_test
         self.judge_prompt = judge_prompt
 
-        # read jsonl file
         self.test_set = []
-        with open(test_set_path, 'r') as f:
-            for line in f:
-                self.test_set.append(json.loads(line))
+        if test_set_path.endswith('.jsonl'):
+            with open(test_set_path, 'r') as f:
+                for line in f:
+                    self.test_set.append(json.loads(line))
+        elif test_set_path.endswith('.xlsx'):
+            df = pd.read_excel(test_set_path)
+            self.test_set = df.to_dict(orient='records')
+            print(f"Test set: {self.test_set}")
 
-        self.test_set = self.test_set[:20]
+        for feature in self.test_set[0].keys():
+            if "{" + feature + "}" not in prompt_to_test:
+                raise ValueError("Field {" + feature + "} isn't included in the prompt to test.")
+            if "{" + feature + "}" not in judge_prompt:
+                raise ValueError("Field {" + feature + "} isn't included in the judge prompt.")
+        
+        self.test_set = self.test_set[:5]
 
     def test_configurable_answers(self, progress_bar=None):
         """
@@ -33,7 +51,7 @@ class ConfigurableTestModule:
         # Extract metrics from judge prompt
         system_message = "You are an assistant that helps identify metrics to evaluate LLM responses."
         user_message = extract_metrics_from_the_judge_prompt.format(judge_prompt=self.judge_prompt)
-        response = LLMCalls.call_openai_chat_completion(self.model_name, user_message, system_message)
+        response = LLMCalls.call_openai_chat_completion(self.judge_model_name, user_message, system_message)
 
         # Parse the extracted metrics (find backticks and extract JSON object, convert to list)
         backticks = response.split("```")
@@ -60,7 +78,7 @@ class ConfigurableTestModule:
             print(f"\033[94mPrompt: \033[0m{formatted_prompt}")
 
             user_message = formatted_prompt           
-            response = LLMCalls.call_openai_chat_completion(self.model_name, user_message, system_message)
+            response = LLMCalls.call_openai_chat_completion(self.tested_model_name, user_message, system_message)
             print(f"\033[92mResponse: \033[0m{response}")
 
             # evaluate the response via the judge prompt
@@ -74,7 +92,7 @@ class ConfigurableTestModule:
             print(f"\033[94mEvaluation Prompt: \033[0m{evaluation_prompt}")
             
             system_message = "You are an LLM judge that evaluates the response based on the metrics extracted."
-            evaluation_response = LLMCalls.call_openai_chat_completion("gpt-4o", evaluation_prompt, system_message)
+            evaluation_response = LLMCalls.call_openai_chat_completion(self.judge_model_name, evaluation_prompt, system_message)
 
             # Parse the evaluation response to extract the metrics
             backticks = evaluation_response.split("```")
@@ -116,13 +134,30 @@ class ConfigurableTestModule:
         axs = axs.flatten()
 
         for idx, (metric, values) in enumerate(metrics_data.items()):
-            if all(isinstance(value, (int, float)) for value in values):
+            # test boolean values first
+            if all(isinstance(value, (bool, np.bool)) for value in values):
+                print(f"Plotting pie chart for {metric}")
+                print(f"Values: {values}")
+                print(f"Type: {type(values[0])}")
+                print("1")
+                value_counts = {value: values.count(value) for value in set(values)}
+                axs[idx].pie(value_counts.values(), labels=value_counts.keys(), autopct='%1.1f%%', colors=plt.cm.Paired.colors)
+                axs[idx].set_title(metric, fontsize=12)
+            elif all(isinstance(value, (int, float)) for value in values):
+                print(f"Plotting histogram for {metric}")
+                print(f"Values: {values}")
+                print(f"Type: {type(values[0])}")
+                print("2")
                 axs[idx].hist(values, bins=10, color='skyblue', edgecolor='black')
                 axs[idx].set_title(metric, fontsize=12)
                 axs[idx].set_xlabel('Score', fontsize=10)
                 axs[idx].set_ylabel('Frequency', fontsize=10)
                 axs[idx].grid(True)
             elif all(isinstance(value, str) for value in values):
+                print(f"Plotting histogram for {metric}")
+                print(f"Values: {values}")
+                print(f"Type: {type(values[0])}")
+                print("3")
                 value_counts = {value: values.count(value) for value in set(values)}
                 axs[idx].pie(value_counts.values(), labels=value_counts.keys(), autopct='%1.1f%%', colors=plt.cm.Paired.colors)
                 axs[idx].set_title(metric, fontsize=12)
@@ -142,7 +177,7 @@ class ConfigurableTestModule:
         plt.savefig(image_name)
         plt.show()
 
-        return image_name, averages
+        return image_name, averages, all_responses
 
 
 # Initialize session state to persist results
@@ -156,11 +191,62 @@ if 'result_image' not in st.session_state:
 st.set_page_config(layout="wide")
 
 # Streamlit app UI
-st.title("Configurable Prompt Test :bar_chart:")
-st.write("Enter a prompt to test the configurable metrics through corresponding evaluations.")
+st.title("Test the prompt on a set of examples :bar_chart:")
+st.write("Select a dataset, models, and prompts to test the 'left' prompt on a set of examples. Judge model will evaluate the responses based on the criteria provided.")
 
-# Input field for the prompt name
-prompt_name = st.text_input("Enter a name for this prompt:", "My new prompt")
+with stylable_container(
+        key="container_with_border",
+        css_styles="""
+            {
+                border: 1px solid rgba(49, 51, 63, 0.2);
+                border-radius: 0.5rem;
+                padding: calc(1em - 1px)
+            }
+            """,
+    ):
+    # Dataset selection and upload
+    st.subheader("Dataset Selection")
+
+    # Select existing dataset
+    uploaded_datasets = [f for f in os.listdir("datasets") if f.endswith('.xlsx') or f.endswith('.jsonl')]
+    selected_dataset = st.selectbox("Select an existing dataset:", uploaded_datasets, index=0)
+
+    # Display available fields from the selected dataset
+    if selected_dataset.endswith('.jsonl'):
+        with open(f"datasets/{selected_dataset}", 'r') as f:
+            first_line = json.loads(f.readline())
+            available_fields = list(first_line.keys())
+    elif selected_dataset.endswith('.xlsx'):
+        df = pd.read_excel(f"datasets/{selected_dataset}")
+        available_fields = list(df.columns)
+
+    st.write(":exclamation:**Fields that need to be present in both prompts:**  " + ", ".join(["{" + field + "}" for field in available_fields]))
+
+    # Upload new dataset
+    uploaded_file = st.file_uploader("**Upload a new dataset (XLSX or JSONL)**:", type=["xlsx", "jsonl"])
+
+    if uploaded_file:
+        new_dataset_path = os.path.join("datasets", uploaded_file.name)
+        with open(new_dataset_path, "wb") as f:
+            f.write(uploaded_file.getbuffer())
+        st.success(f"Uploaded {uploaded_file.name} successfully!")
+        uploaded_datasets.append(uploaded_file.name)
+        selected_dataset = uploaded_file.name
+
+# st.divider()
+st.subheader("Model Selection and Prompts")
+
+model_options_test = ["gpt-4o-mini", "gpt-4o"]
+model_options_judge = ["gpt-4o", "gpt-4o-mini"]
+
+# Dropdown for the tested LLM model
+col1, col2 = st.columns(2)
+with col1:
+    tested_model = st.selectbox("**Select the LLM model to be tested:**", model_options_test, index=0)
+
+# Dropdown for the judge LLM model
+with col2:
+    judge_model = st.selectbox("**Select the judge LLM model:**", model_options_judge, index=0)
 
 # Layout for prompt and judge prompt side by side
 col1, col2 = st.columns(2)
@@ -168,36 +254,44 @@ col1, col2 = st.columns(2)
 # Input field for the prompt text
 with col1:
     prompt_input = st.text_area(
-        "Enter your prompt:", 
-        "Provide a sarcastic response to the following question: \n\"{user_question}\"\nbut the answer must contain the following information:\n\"{fact}\".",
-        height=400  # Adjust the height for a larger text area
+        "**Enter your prompt for the tested model:**", 
+        "Provide a response to the following question: \n\"{user_question}\"\nbut the answer must contain the following information:\n\"{fact}\".\nYou are a little sarcastic and extroverted by 40% - not too friendly.",
+        height=460  # Adjust the height for a larger text area
     )
 
 # Input field for the judge prompt
 with col2:
-    st.info('The judge prompt must specify the metrics and their value ranges to assess, using the same fields as in the first prompt, plus the {LLM_response} field.', icon="ℹ️")
     judge_prompt = st.text_area(
-        "Enter your judge prompt:",
+        "**Enter the middle of the judge prompt:**",
         sample_eval_prompt,
-        height=400  # Adjust the height for a larger text area
+        height=460  # Adjust the height for a larger text area
     )
+    st.info("""Thus 'middle' judge prompt must specify the metrics and their value types to assess, e.g.:
+            int from 0 to 28, 
+            string ["good", "bad", "neutral"], 
+            boolean (true, false).
+            The prompt will be formatted with the same fields as the tested prompt / the fields in the dataset.
+            Besides the fields that are in the tested prompt, the {LLM_response} field must be added.
+            This judge prompt will be appended by instructions for the evaluator."""
+            , icon="ℹ️")
 
 if st.button("Run Configurable Test"):
-    if prompt_input and prompt_name and judge_prompt:
+    if prompt_input and judge_prompt:
         if "{LLM_response}" not in judge_prompt:
-            st.error("The judge prompt must include the '{LLM_response}' field.")
+            st.error("The judge prompt must also include the '{LLM_response}' field.")
         else:
             # Create a progress bar
             progress_bar = st.progress(0)
             
             # Run the configurable test and get the resulting image, averages, and random responses
             with st.spinner("Running the configurable test..."):
-                configurable_test_module = ConfigurableTestModule("datasets/dummy_qa_dataset_new.jsonl", prompt_input, judge_prompt, "gpt-4o")
-                result_image, averages = configurable_test_module.test_configurable_answers(progress_bar)
+                configurable_test_module = ConfigurableTestModule(f"datasets/{selected_dataset}", prompt_input, judge_prompt, tested_model, judge_model)
+                result_image, averages, responses = configurable_test_module.test_configurable_answers(progress_bar)
             
             # Store results in session state to persist them across layout changes
             st.session_state['result_image'] = result_image
             st.session_state['averages'] = averages
+            st.session_state['random_responses'] = responses
     
             # Indicate completion
             st.success("Configurable test completed!")
@@ -206,16 +300,45 @@ if st.button("Run Configurable Test"):
 if st.session_state['result_image']:
     st.image(st.session_state['result_image'], caption="Generated Metrics", use_column_width=False, width=900)
 
-# Display averages if available in session state
-if st.session_state['averages']:
-    st.subheader("Average Metrics")
-    print(st.session_state['averages'])
-    metric_display = ""
-    for key, value in st.session_state['averages'].items():
-        if isinstance(value, dict):
-            metric_display += f"**{key.capitalize()}**:<br>"
-            for subkey, subvalue in value.items():
-                metric_display += f"&nbsp;&nbsp;- **{subkey.capitalize()}**: {subvalue:.2f}<br>"
-        elif isinstance(value, (int, float)):
-            metric_display += f"**{key.capitalize()}**: {value:.2f}<br>"
-    st.markdown(metric_display, unsafe_allow_html=True)
+with stylable_container(
+        key="container_with_border",
+        css_styles="""
+            {
+                border: 1px solid rgba(49, 51, 63, 0.2);
+                border-radius: 0.5rem;
+                padding: calc(1em - 1px)
+            }
+            """,
+    ):
+    # Display averages if available in session state
+    if st.session_state['averages']:
+        st.subheader("Average Metrics:")
+        print(st.session_state['averages'])
+        metric_display = ""
+        for key, value in st.session_state['averages'].items():
+            if isinstance(value, dict):
+                metric_display += f"**{key.capitalize()}**:<br>"
+                for subkey, subvalue in value.items():
+                    metric_display += f"&nbsp;&nbsp;- **{subkey.capitalize()}**: {subvalue:.2f}<br>"
+            elif isinstance(value, (int, float)):
+                metric_display += f"**{key.capitalize()}**: {value:.2f}<br>"
+        st.markdown(metric_display, unsafe_allow_html=True)
+
+with stylable_container(
+        key="container_with_border",
+        css_styles="""
+            {
+                border: 1px solid rgba(49, 51, 63, 0.2);
+                border-radius: 0.5rem;
+                padding: calc(1em - 1px)
+            }
+            """,
+    ):
+    # Display random responses if available in session state
+    if st.session_state['random_responses']:
+        st.subheader("Randomly Selected Responses:")
+        # select 3 random responses from the list
+        random_responses = random.sample(st.session_state['random_responses'], 3)
+        for idx, response in enumerate(random_responses):
+            st.write(response)
+            st.divider()
